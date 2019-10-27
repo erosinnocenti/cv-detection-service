@@ -1,0 +1,24 @@
+{
+  "name": "cv-detection-service",
+  "version": "1.0.0",
+  "description": "Detection service based on YOLO",
+  "main": "app.js",
+  "scripts": {
+    "start": "node -r esm app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erosinnocenti/cv-detection-service.git"
+  },
+  "author": "Eros Innocenti",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/erosinnocenti/cv-detection-service/issues"
+  },
+  "homepage": "https://github.com/erosinnocenti/cv-detection-service#readme",
+  "dependencies": {
+    "darknet": "^2.0.17",
+    "esm": "^3.2.25",
+    "opencv4nodejs": "^5.4.0"
+  }
+}
