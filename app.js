@@ -1,14 +1,27 @@
-const http = require('http');
+import { env } from './environment/environment';
+const WebSocket = require('ws');
 
-const hostname = '0.0.0.0';
-const port = 3000;
+function noop() {}
 
-const server = http.createServer((req, res) => {
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'text/plain');
-  res.end('Hello World\n');
+const wss = new WebSocket.Server({ port: env.wsPort });
+console.log('WebSocket server started');
+
+wss.on('connection', (ws, req) => {
+	ws.alive = true;
+
+	console.log('New client connected (' + req.connection.remoteAddress + ')');
+
+	ws.on('message', function incoming(message) {});
+
+	ws.on('close', () => {
+		console.log('Client disconnected');
+	});
 });
 
-server.listen(port, hostname, () => {
-  console.log(`Server running at http://${hostname}:${port}/`);
-});
+setInterval(function ping() {
+	wss.clients.forEach(function each(ws) {
+		if (ws.alive === false) return ws.terminate();
+		ws.alive = false;
+		ws.ping(noop);
+	});
+}, env.pingInterval);
