@@ -53,7 +53,7 @@ wss.on('connection', (ws, req) => {
 			break;
 			case 'STOP_STREAMING':
 				console.log('Stopping streaming');
-				
+
 				clientStates.get(ws).state = 'STOP';
 			break;
 		}
@@ -100,21 +100,33 @@ function sendFrame(ws, detectionMessage) {
 		clientState.frameTime = clientState.frameTime + delta;
 
 		if(clientState.frameCount % 30 == 0) {
-			const fps = 1 / (clientState.frameTime / clientState.frameCount);
+			let fps = 0;
+			if(clientState.frameTime > 0 && clientState.frameCount > 0) {
+				fps = 1 / (clientState.frameTime / clientState.frameCount)
+			}
+
 			clientState.frameCount = 0;
 			clientState.frameTime = 0;
+			clientState.fps = fps;
 	
 			console.log('Client ' + clientState.uuid + ' (' + clientState.ip + ') is running at ' + fps.toFixed(2) + " fps");
 		}	
 	}
-
+	
 	clientState.lastFrameTime = Date.now();
 
 	// Estrazione frame con OpenCV
 	let frame = cap.read().cvtColor(cv.COLOR_BGR2RGB);
-
+	
 	// Detect con Yolo
-	detectionMessage.payload = darknet.detect(frame);
+	detectionMessage.payload = {
+		fps: clientState.fps,
+		size: {
+			h: frame.rows,
+			w: frame.cols
+		},
+		detections: darknet.detect(frame)
+	};
 
 	// Creazione e invio messaggio a client
 	const message = JSON.stringify(detectionMessage);
@@ -127,5 +139,8 @@ function sendFrame(ws, detectionMessage) {
 	} else {
 		clientState.state = 'IDLE';
 		console.log('Streaming stopped');
+
+		cap.release();
+
 	}
 }
