@@ -19,6 +19,8 @@
   "dependencies": {
     "darknet": "^2.0.17",
     "esm": "^3.2.25",
-    "opencv4nodejs": "^5.4.0"
+    "opencv4nodejs": "^5.4.0",
+    "uuid": "^3.3.3",
+    "ws": "^7.2.0"
   }
 }

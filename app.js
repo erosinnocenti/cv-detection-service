@@ -2,48 +2,130 @@ import { env } from './environment/environment';
 const WebSocket = require('ws');
 const fs = require('fs');
 const cv = require('opencv4nodejs');
-const { Darknet } = require('darknet'); 
+const { Darknet } = require('darknet');
+const uuidv1 = require('uuid/v1');
 
-function noop() {}
+const clientStates = new Map();
+
+var darknet = null;
+var cap = null;
 
 const wss = new WebSocket.Server({ port: env.wsPort });
 console.log('WebSocket server started');
 
 wss.on('connection', (ws, req) => {
-	ws.alive = true;
-
-	console.log('New client connected (' + req.connection.remoteAddress + ')');
+	// Generazione nuovo UUID
+	const uuid = uuidv1();
+	// Impostazione stato client
+	const clientState = {
+		ip: req.connection.remoteAddress,
+		state: 'IDLE',
+		uuid: uuid,
+		lastFrameTime: null,
+		frameTime: 0,
+		frameCount: 0,
+		fps: 0
+	}
+	console.log('New client connected (' + clientState.ip + ') UUID: ' + clientState.uuid);
 	
-	console.log('Streaming started');
+	clientStates.set(ws, clientState);
 
+	// Assegnazione UUID al client
+	const uuidAssignMessage = {
+		type: 'UUID_ASSIGN',
+		payload: {
+			'uuid': uuid
+		}
+	};
+	ws.send(JSON.stringify(uuidAssignMessage));
+
+	ws.on('message', (message) => {
+		console.log('Message received: ' + message);
+
+		const messageObj = JSON.parse(message);
+
+		switch(messageObj.type) {
+			case 'START_STREAMING':
+				console.log('Streaming started');
+				clientStates.get(ws).state = 'STREAMING';
+
+				startStreaming(ws);
+			break;
+			case 'STOP_STREAMING':
+				console.log('Stopping streaming');
+				
+				clientStates.get(ws).state = 'STOP';
+			break;
+		}
+	});
+
+	ws.on('close', () => {
+		clientStates.delete(ws);
+		
+		console.log('Client disconnected');
+	});
+});
+
+function startStreaming(ws) {
 	// Init
-	let darknet = new Darknet({
+	darknet = new Darknet({
 		weights: './config/yolov3-tiny.weights',
 		config: './config/yolov3-tiny.cfg',
 		names: [ 'person' ]
 	});
 
-	const cap = new cv.VideoCapture('./data/leeds.mp4');
-	
-	let frame;
-	do {
-		frame = cap.read().cvtColor(cv.COLOR_BGR2RGB);
-		ws.send(darknet.detect(frame));
-		console.log(darknet.detect(frame));
-	} while(!frame.empty && ws.alive);
-	
-	ws.on('message', function incoming(message) {});
+	cap = new cv.VideoCapture('./data/leeds.mp4');
 
-	ws.on('close', () => {
-		ws.alive = false;
-		console.log('Client disconnected');
-	});
-});
+	const detectionMessage = {
+		type: 'DETECTION',
+		payload: {}
+	}
 
-setInterval(function ping() {
-	wss.clients.forEach(function each(ws) {
-		if (ws.alive === false) return ws.terminate();
-		ws.alive = false;
-		ws.ping(noop);
-	});
-}, env.pingInterval);
+	const clientState = clientStates.get(ws);
+	clientState.frameCount = 0;
+	clientState.frameTime = 0;
+	clientState.fps = 0;
+	clientState.lastFrameTime = null;
+	
+	sendFrame(ws, detectionMessage);
+}
+
+function sendFrame(ws, detectionMessage) {
+	const clientState = clientStates.get(ws);
+	
+	// Aggiornamento tempo ultimo frame e calcolo FPS
+	if(clientState.lastFrameTime != null) {
+		const delta = (Date.now() - clientState.lastFrameTime)/1000;
+		clientState.frameCount = clientState.frameCount + 1;
+		clientState.frameTime = clientState.frameTime + delta;
+
+		if(clientState.frameCount % 30 == 0) {
+			const fps = 1 / (clientState.frameTime / clientState.frameCount);
+			clientState.frameCount = 0;
+			clientState.frameTime = 0;
+	
+			console.log('Client ' + clientState.uuid + ' (' + clientState.ip + ') is running at ' + fps.toFixed(2) + " fps");
+		}	
+	}
+
+	clientState.lastFrameTime = Date.now();
+
+	// Estrazione frame con OpenCV
+	let frame = cap.read().cvtColor(cv.COLOR_BGR2RGB);
+
+	// Detect con Yolo
+	detectionMessage.payload = darknet.detect(frame);
+
+	// Creazione e invio messaggio a client
+	const message = JSON.stringify(detectionMessage);
+	ws.send(message);
+
+	if(clientState.state == 'STREAMING') {
+		setImmediate(() => {
+			sendFrame(ws, detectionMessage);
+		});
+	} else {
+		clientState.state = 'IDLE';
+		console.log('Streaming stopped');
+	}
+}
