@@ -8,4 +8,4 @@ let darknet = new Darknet({
 });
  
 // Detect
-console.log(darknet.detect('./data/person.jpg'));
+console.log(darknet.detect('./data/person_001.jpg'));
