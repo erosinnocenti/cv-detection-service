@@ -59,13 +59,11 @@ wss.on('connection', (ws, req) => {
 
 		switch (messageObj.type) {
 			case 'START_STREAMING':
-				const sendImages = messageObj.payload.sendImages;
-
 				console.log('Streaming started');
-				console.log('SendImages = ' + sendImages);
+				console.log('Config = ' + JSON.stringify(messageObj.payload));
 				clientStates.get(ws).state = 'STREAMING';
 
-				startStreaming(ws, sendImages);
+				startStreaming(ws, messageObj.payload);
 				break;
 			case 'STOP_STREAMING':
 				console.log('Stopping streaming');
@@ -82,7 +80,7 @@ wss.on('connection', (ws, req) => {
 	});
 });
 
-function startStreaming(ws, sendImages) {
+function startStreaming(ws, payload) {
 	if(inputType == 'VIDEO') {
 		cap = new cv.VideoCapture(inputFile);
 	}
@@ -98,16 +96,16 @@ function startStreaming(ws, sendImages) {
 	clientState.fps = 0;
 	clientState.lastFrameTime = null;
 
-	sendFrame(ws, detectionMessage, sendImages);
+	sendFrame(ws, detectionMessage, payload);
 }
 
-function sendFrame(ws, detectionMessage, sendImages) {
+function sendFrame(ws, detectionMessage, payload) {
 	const clientState = clientStates.get(ws);
 
-	if (clientState == null) {
+	if (clientState === undefined) {
 		console.log('Client disconnected');
-
 		cap.release();
+		return;
 	}
 
 	// Aggiornamento tempo ultimo frame e calcolo FPS
@@ -159,10 +157,10 @@ function sendFrame(ws, detectionMessage, sendImages) {
 	};
 
 	// Invio immagine
-	if (sendImages == true) {
-		const b64 = cv.imencode('.png', frame).toString('base64');
+	if (payload.sendImages == true) {
+		const b64 = cv.imencode('.jpg', frame, [cv.IMWRITE_JPEG_QUALITY, payload.compression]).toString('base64');
 
-		detectionMessage.payload.image = 'data:image/png;base64,' + b64;
+		detectionMessage.payload.image = 'data:image/jpg;base64,' + b64;
 	}
 
 	// Creazione e invio messaggio a client
@@ -171,7 +169,7 @@ function sendFrame(ws, detectionMessage, sendImages) {
 
 	if (clientState.state == 'STREAMING') {
 		setImmediate(() => {
-			sendFrame(ws, detectionMessage, sendImages);
+			sendFrame(ws, detectionMessage, payload);
 		});
 	} else {
 		clientState.state = 'IDLE';
