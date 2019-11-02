@@ -4,7 +4,7 @@
   "description": "Detection service based on YOLO",
   "main": "app.js",
   "scripts": {
-    "start": "node -r esm app.js"
+    "start": "node --experimental-worker -r esm app.js"
   },
   "repository": {
     "type": "git",

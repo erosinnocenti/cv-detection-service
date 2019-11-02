@@ -1,22 +1,20 @@
 import { env } from './environment/environment';
 const WebSocket = require('ws');
 const cv = require('opencv4nodejs');
-const { Darknet } = require('darknet');
 const uuidv1 = require('uuid/v1');
+const { Worker } = require('worker_threads');
 
 const clientStates = new Map();
 
-const darknet = new Darknet({
-	weights: './config/yolov3-tiny.weights',
-	config: './config/yolov3-tiny.cfg',
-	names: ['person']
-});
-
-const inputFile = './data/leeds.mp4';
+let inputFile = './data/venezia.mp4';
+// const inputFile = 'rtsp://admin:password@192.168.91.227:554/ch01.264?ptype=udp';
 // const inputFile = './data/person_001.jpg';
-const inputType = 'VIDEO'; // or VIDEO
 
 let cap = null;
+let currentFrame = null;
+let workingFrame = null;
+
+const worker = new Worker('./dnn-worker.js');
 
 const wss = new WebSocket.Server({ port: env.wsPort });
 console.log('WebSocket server started');
@@ -81,10 +79,10 @@ wss.on('connection', (ws, req) => {
 });
 
 function startStreaming(ws, payload) {
-	if(inputType == 'VIDEO') {
-		cap = new cv.VideoCapture(inputFile);
-	}
+	inputFile = payload.input;
 
+	cap = new cv.VideoCapture(inputFile);
+	
 	const detectionMessage = {
 		type: 'DETECTION',
 		payload: {}
@@ -96,10 +94,54 @@ function startStreaming(ws, payload) {
 	clientState.fps = 0;
 	clientState.lastFrameTime = null;
 
-	sendFrame(ws, detectionMessage, payload);
+	// Thread separato per YOLO
+	worker.removeAllListeners('message');
+	worker.on('message', (msg) => {
+		if(msg.status = 'done') {
+			// Invio immagine
+			if (payload.sendImages == true) {
+				// Frame ridimensionato e compresso
+				workingFrame.resize(workingFrame.rows / 2, workingFrame.cols / 2);
+
+				const b64 = cv.imencode('.jpg', workingFrame, [cv.IMWRITE_JPEG_QUALITY, payload.compression]).toString('base64');
+				msg.result.payload.image = 'data:image/jpg;base64,' + b64;
+			}
+
+			// Aggiunta dimensione canvas
+			msg.result.payload.size = {
+				h: workingFrame.rows,
+				w: workingFrame.cols
+			}
+
+			ws.send(JSON.stringify(msg.result));
+
+			// Elabora il prossimo frame
+			sendFrameToWorker(worker);
+		}
+	});
+	
+	frameLoop(ws, detectionMessage, payload);
+	
+	// Inizializza il thread
+	worker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage });
+
+	// Elabora il primo frame
+	sendFrameToWorker(worker);
 }
 
-function sendFrame(ws, detectionMessage, payload) {
+function sendFrameToWorker(worker) {
+	const tempFile = '/tmp/frame.jpg';
+
+	if(currentFrame != null && !currentFrame.empty) {
+		workingFrame = currentFrame.copy();
+		cv.imwrite(tempFile, workingFrame);
+		worker.postMessage({ action: 'detect', file: tempFile });
+	} else {
+		worker.postMessage({ action: 'shutdown' });
+	}
+}
+
+function frameLoop(ws, detectionMessage, payload) {
 	const clientState = clientStates.get(ws);
 
 	if (clientState === undefined) {
@@ -108,75 +150,18 @@ function sendFrame(ws, detectionMessage, payload) {
 		return;
 	}
 
-	// Aggiornamento tempo ultimo frame e calcolo FPS
-	if (clientState.lastFrameTime != null) {
-		const delta = (Date.now() - clientState.lastFrameTime) / 1000;
-		clientState.frameCount = clientState.frameCount + 1;
-		clientState.frameTime = clientState.frameTime + delta;
-
-		if (clientState.frameCount % 30 == 0) {
-			let fps = 0;
-			if (clientState.frameTime > 0 && clientState.frameCount > 0) {
-				fps = 1 / (clientState.frameTime / clientState.frameCount);
-			}
-
-			clientState.frameCount = 0;
-			clientState.frameTime = 0;
-			clientState.fps = fps;
-
-			console.log(
-				'Client ' +
-					clientState.uuid +
-					' (' +
-					clientState.ip +
-					') is running at ' +
-					fps.toFixed(2) +
-					' fps'
-			);
-		}
-	}
-
-	clientState.lastFrameTime = Date.now();
-
 	// Estrazione frame con OpenCV
-	let frame = null;
-	if(inputType == 'VIDEO') {
-		frame = cap.read().cvtColor(cv.COLOR_BGR2RGB);
-	} else {
-		frame = cv.imread(inputFile);
-	}
-
-	// Detect con Yolo
-	detectionMessage.payload = {
-		fps: clientState.fps,
-		size: {
-			h: frame.rows,
-			w: frame.cols
-		},
-		detections: darknet.detect(frame)
-	};
-
-	// Invio immagine
-	if (payload.sendImages == true) {
-		const b64 = cv.imencode('.jpg', frame, [cv.IMWRITE_JPEG_QUALITY, payload.compression]).toString('base64');
-
-		detectionMessage.payload.image = 'data:image/jpg;base64,' + b64;
-	}
-
-	// Creazione e invio messaggio a client
-	const message = JSON.stringify(detectionMessage);
-	ws.send(message);
+	currentFrame = cap.read();
 
 	if (clientState.state == 'STREAMING') {
 		setImmediate(() => {
-			sendFrame(ws, detectionMessage, payload);
+			frameLoop(ws, detectionMessage, payload);
 		});
 	} else {
 		clientState.state = 'IDLE';
+		currentFrame = null;
 		console.log('Streaming stopped');
 
-		if(inputType == 'VIDEO') {
-			cap.release();
-		}
+		cap.release();
 	}
 }

@@ -14,7 +14,7 @@ const cap = new cv.VideoCapture('./data/leeds.mp4');
 let frame;
 let index = 0;
 do {
-  frame = cap.read().cvtColor(cv.COLOR_BGR2RGB);
+  frame = cap.read();
   console.log(darknet.detect(frame));
 } while(!frame.empty);
  
