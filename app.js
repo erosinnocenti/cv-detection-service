@@ -101,7 +101,7 @@ function startStreaming(ws, payload) {
 			// Invio immagine
 			if (payload.sendImages == true) {
 				// Frame ridimensionato e compresso
-				workingFrame.resize(workingFrame.rows / 2, workingFrame.cols / 2);
+				// workingFrame.resize(workingFrame.rows / 2, workingFrame.cols / 2);
 
 				const b64 = cv.imencode('.jpg', workingFrame, [cv.IMWRITE_JPEG_QUALITY, payload.compression]).toString('base64');
 				msg.result.payload.image = 'data:image/jpg;base64,' + b64;
