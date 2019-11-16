@@ -1,6 +1,6 @@
 import { env } from './environment/environment';
 const WebSocket = require('ws');
-const cv = require('opencv4nodejs');
+const BSON = require('bson');
 const uuidv1 = require('uuid/v1');
 const { Worker } = require('worker_threads');
 
@@ -16,7 +16,24 @@ let workingFrame = null;
 
 const worker = new Worker('./dnn-worker.js');
 
-const wss = new WebSocket.Server({ port: env.wsPort });
+const wss = new WebSocket.Server({ 
+	port: env.wsPort,
+/* 	perMessageDeflate: {
+		zlibDeflateOptions: {
+		  chunkSize: 1024,
+		  memLevel: 7,
+		  level: 3
+		},
+		zlibInflateOptions: {
+		  chunkSize: 10 * 1024
+		},
+		clientNoContextTakeover: true,
+		serverNoContextTakeover: true,
+		serverMaxWindowBits: 10,
+		concurrencyLimit: 10,
+		threshold: 1024
+	  } */
+});
 console.log('WebSocket server started');
 
 wss.on('connection', (ws, req) => {
@@ -48,17 +65,17 @@ wss.on('connection', (ws, req) => {
 			uuid: uuid
 		}
 	};
-	ws.send(JSON.stringify(uuidAssignMessage));
+	ws.send(BSON.serialize(uuidAssignMessage));
 
 	ws.on('message', message => {
 		console.log('Message received: ' + message);
 
-		const messageObj = JSON.parse(message);
+		const messageObj = BSON.deserialize(message);
 
 		switch (messageObj.type) {
 			case 'START_STREAMING':
 				console.log('Streaming started');
-				console.log('Config = ' + JSON.stringify(messageObj.payload));
+				console.log('Config = ' + BSON.serialize(messageObj.payload));
 				clientStates.get(ws).state = 'STREAMING';
 
 				startStreaming(ws, messageObj.payload);
@@ -113,8 +130,8 @@ function startStreaming(ws, payload) {
 				w: workingFrame.cols
 			}
 
-			ws.send(JSON.stringify(msg.result));
-
+			ws.send(BSON.serialize(msg.result));
+			
 			// Elabora il prossimo frame
 			sendFrameToWorker(worker);
 		}

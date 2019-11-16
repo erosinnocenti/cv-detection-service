@@ -4,7 +4,7 @@
   "description": "Detection service based on YOLO",
   "main": "app.js",
   "scripts": {
-    "start": "node --experimental-worker -r esm app.js"
+    "start": "node --experimental-worker -r esm --prof app.js"
   },
   "repository": {
     "type": "git",
@@ -17,9 +17,12 @@
   },
   "homepage": "https://github.com/erosinnocenti/cv-detection-service#readme",
   "dependencies": {
+    "bson": "^4.0.2",
+    "bufferutil": "^4.0.1",
     "darknet": "^2.0.17",
     "esm": "^3.2.25",
     "opencv4nodejs": "^5.4.0",
+    "utf-8-validate": "^5.0.2",
     "uuid": "^3.3.3",
     "ws": "^7.2.0"
   }

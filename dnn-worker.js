@@ -1,9 +1,9 @@
-const { workerData, parentPort } = require('worker_threads')
+const { parentPort } = require('worker_threads')
 const { Darknet } = require('darknet');
 
 darknet = new Darknet({
-	weights: './config/yolov3-tiny.weights',
-	config: './config/yolov3-tiny.cfg',
+	weights: './config/yolov3.weights',
+	config: './config/yolov3.cfg',
 	names: ['person']
 });
 
