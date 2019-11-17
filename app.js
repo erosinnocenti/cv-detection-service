@@ -1,4 +1,5 @@
 import { env } from './environment/environment';
+import { start } from 'repl';
 const WebSocket = require('ws');
 const uuidv1 = require('uuid/v1');
 const { Worker } = require('worker_threads');
@@ -48,7 +49,7 @@ wss.on('connection', (ws, req) => {
 
 	ws.on('message', message => {
 		console.log('Message received: ' + message);
-
+		
 		const messageObj = JSON.parse(message);
 
 		switch (messageObj.type) {
@@ -101,7 +102,7 @@ function startStreaming(ws, payload) {
 				},
 				dataUrl: msg.dataUrl
 			}
-			
+
 			if(frame != null && !frame.empty) {
 				dnnWorker.postMessage({ action: 'detect', frame: frame });
 			} else {
@@ -122,7 +123,7 @@ function startStreaming(ws, payload) {
 
 				ws.send(JSON.stringify(msg.result));
 
-				cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression });
+				cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression, maxSize: payload.maxSize });
 			} else {
 				clientState.state = 'IDLE';
 				console.log('Streaming stopped');
@@ -136,8 +137,8 @@ function startStreaming(ws, payload) {
 	cvWorker.postMessage( { action: 'initialize', stream: inputStream });
 	
 	// Inizializza il thread DNN
-	dnnWorker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage });
+	dnnWorker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage, minProb: payload.minProb });
 
 	// Richiede il primo frame
-	cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression });
+	cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression, maxSize: payload.maxSize });
 }

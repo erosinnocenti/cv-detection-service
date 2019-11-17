@@ -10,10 +10,9 @@ parentPort.on('message', (msg) => {
 		console.log('OpenCV Worker initialized for stream ' + stream);
         
         cap = new cv.VideoCapture(stream);
+        cap.set(cv.CAP_PROP_FPS, 100);
 
         readFrame();
-
-		return;
 	} else if(msg.action == 'get-frame') {
         const buffer = currentFrame.getData();
 		const image = {
@@ -29,7 +28,12 @@ parentPort.on('message', (msg) => {
         }
 
         if(msg.withImage == true) {
-            result.dataUrl = 'data:image/jpg;base64,' + cv.imencode('.jpg', currentFrame, [cv.IMWRITE_JPEG_QUALITY, msg.compression]).toString('base64');
+            if(msg.maxSize !== undefined) {
+                currentFrame = currentFrame.resizeToMax(msg.maxSize);
+            }
+
+            const encoded = cv.imencode('.jpg', currentFrame, [cv.IMWRITE_JPEG_QUALITY, msg.compression]).toString('base64');
+            result.dataUrl = 'data:image/jpg;base64,' + encoded;
         }
 
         parentPort.postMessage(result);
@@ -37,9 +41,15 @@ parentPort.on('message', (msg) => {
 });
 
 function readFrame() {
-    currentFrame = cap.read();
-
-    if(!currentFrame.empty) {
-        setImmediate(readFrame);
+    if(currentFrame == null) {
+        currentFrame = cap.read();
     }
+
+    cap.readAsync((err, frame) => {
+        currentFrame = frame;
+
+        if(!currentFrame.empty) {
+            setImmediate(readFrame);
+        }
+    });
 }

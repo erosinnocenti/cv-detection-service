@@ -39,6 +39,7 @@ do {
 		}
   }
   
+  
   lastFrameTime = Date.now();
 
   frame = cap.read();
@@ -52,8 +53,18 @@ do {
 	c: workingFrame.channels,
 	b: Buffer.from(buffer.buffer)
   }
+  
+  startTime = Date.now();
 
-  darknet.detect(image);
+  const dets = darknet.detect(frame);
+	const filteredPeople = [];
+
+	for(let d of dets) {
+		
+			console.log(d.prob);
+		
+	}
+
 
   // console.log(darknet.detect(frame));
 } while(!frame.empty);
