@@ -2,8 +2,8 @@ const { parentPort } = require('worker_threads')
 const { Darknet } = require('darknet');
 
 darknet = new Darknet({
-	weights: './config/yolov3.weights',
-	config: './config/yolov3.cfg',
+	weights: './config/yolov3-tiny.weights',
+	config: './config/yolov3-tiny.cfg',
 	names: ['person']
 });
 
@@ -12,20 +12,23 @@ let clientState = null;
 
 parentPort.on('message', (msg) => {
 	let frame = null;
-	
+
 	if(msg.action == 'initialize') {
 		detectionMessage = msg.detectionMessage;
 		clientState = msg.clientState;
 		
-		console.log('Worker initialized for client ' + clientState.uuid);
+		console.log('DNN worker initialized for client ' + clientState.uuid);
 		
 		return;
 	} else if(msg.action == 'shutdown') {
-		console.log('Shutting down worker for client ' + clientState.uuid);
+		console.log('Shutting down DNN worker for client ' + clientState.uuid);
 
 		return;
 	} else if(msg.action = 'detect') {
-		frame = msg.file;
+		frame = msg.frame;
+
+		// Conversione da UInt8Array a Buffer
+		frame.b = Buffer.from(frame.b);
 	}
 
 	// Aggiornamento tempo ultimo frame e calcolo FPS

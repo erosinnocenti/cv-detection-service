@@ -4,8 +4,8 @@ const { Darknet } = require('darknet');
 
 // Init
 let darknet = new Darknet({
-    weights: './config/yolov3.weights',
-    config: './config/yolov3.cfg',
+    weights: './config/yolov3-tiny.weights',
+    config: './config/yolov3-tiny.cfg',
     names: [ 'person' ]
 });
 
@@ -42,6 +42,19 @@ do {
   lastFrameTime = Date.now();
 
   frame = cap.read();
+
+  workingFrame = frame.copy();
+
+  const buffer = workingFrame.getData();
+  const image =  {
+	w: workingFrame.cols,
+	h: workingFrame.rows,
+	c: workingFrame.channels,
+	b: Buffer.from(buffer.buffer)
+  }
+
+  darknet.detect(image);
+
   // console.log(darknet.detect(frame));
 } while(!frame.empty);
  

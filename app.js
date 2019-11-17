@@ -1,40 +1,19 @@
 import { env } from './environment/environment';
 const WebSocket = require('ws');
-const BSON = require('bson');
 const uuidv1 = require('uuid/v1');
 const { Worker } = require('worker_threads');
 
 const clientStates = new Map();
 
-let inputFile = './data/venezia.mp4';
-// const inputFile = 'rtsp://admin:password@192.168.91.227:554/ch01.264?ptype=udp';
-// const inputFile = './data/person_001.jpg';
-
-let cap = null;
-let currentFrame = null;
-let workingFrame = null;
-
-const worker = new Worker('./dnn-worker.js');
+const dnnWorker = new Worker('./dnn-worker.js');
+const cvWorker = new Worker('./cv-worker.js');
 
 const wss = new WebSocket.Server({ 
-	port: env.wsPort,
-/* 	perMessageDeflate: {
-		zlibDeflateOptions: {
-		  chunkSize: 1024,
-		  memLevel: 7,
-		  level: 3
-		},
-		zlibInflateOptions: {
-		  chunkSize: 10 * 1024
-		},
-		clientNoContextTakeover: true,
-		serverNoContextTakeover: true,
-		serverMaxWindowBits: 10,
-		concurrencyLimit: 10,
-		threshold: 1024
-	  } */
+	port: env.wsPort
 });
 console.log('WebSocket server started');
+
+let lastResult = null;
 
 wss.on('connection', (ws, req) => {
 	// Generazione nuovo UUID
@@ -65,17 +44,17 @@ wss.on('connection', (ws, req) => {
 			uuid: uuid
 		}
 	};
-	ws.send(BSON.serialize(uuidAssignMessage));
+	ws.send(JSON.stringify(uuidAssignMessage));
 
 	ws.on('message', message => {
 		console.log('Message received: ' + message);
 
-		const messageObj = BSON.deserialize(message);
+		const messageObj = JSON.parse(message);
 
 		switch (messageObj.type) {
 			case 'START_STREAMING':
 				console.log('Streaming started');
-				console.log('Config = ' + BSON.serialize(messageObj.payload));
+				console.log('Config = ' + JSON.stringify(messageObj.payload));
 				clientStates.get(ws).state = 'STREAMING';
 
 				startStreaming(ws, messageObj.payload);
@@ -96,10 +75,8 @@ wss.on('connection', (ws, req) => {
 });
 
 function startStreaming(ws, payload) {
-	inputFile = payload.input;
+	const inputStream = payload.input;
 
-	cap = new cv.VideoCapture(inputFile);
-	
 	const detectionMessage = {
 		type: 'DETECTION',
 		payload: {}
@@ -111,74 +88,56 @@ function startStreaming(ws, payload) {
 	clientState.fps = 0;
 	clientState.lastFrameTime = null;
 
-	// Thread separato per YOLO
-	worker.removeAllListeners('message');
-	worker.on('message', (msg) => {
-		if(msg.status = 'done') {
-			// Invio immagine
-			if (payload.sendImages == true) {
-				// Frame ridimensionato e compresso
-				// workingFrame.resize(workingFrame.rows / 2, workingFrame.cols / 2);
+	// Thread separato per OpenCV
+	cvWorker.removeAllListeners('message');
+	cvWorker.on('message', (msg) => {
+		if(msg.status == 'done') {
+			const frame = msg.frame;
 
-				const b64 = cv.imencode('.jpg', workingFrame, [cv.IMWRITE_JPEG_QUALITY, payload.compression]).toString('base64');
-				msg.result.payload.image = 'data:image/jpg;base64,' + b64;
+			lastResult = {
+				size: {
+					h: frame.h,
+					w: frame.w
+				},
+				dataUrl: msg.dataUrl
 			}
-
-			// Aggiunta dimensione canvas
-			msg.result.payload.size = {
-				h: workingFrame.rows,
-				w: workingFrame.cols
-			}
-
-			ws.send(BSON.serialize(msg.result));
 			
-			// Elabora il prossimo frame
-			sendFrameToWorker(worker);
+			if(frame != null && !frame.empty) {
+				dnnWorker.postMessage({ action: 'detect', frame: frame });
+			} else {
+				dnnWorker.postMessage({ action: 'shutdown' });
+			}
+		}
+	});
+
+	// Thread separato per YOLO
+	dnnWorker.removeAllListeners('message');
+	dnnWorker.on('message', (msg) => {
+		if(msg.status = 'done') {
+			if (clientState.state == 'STREAMING') {
+				msg.result.payload.image = lastResult.dataUrl;
+
+				// Aggiunta dimensione canvas
+				msg.result.payload.size = lastResult.size;
+
+				ws.send(JSON.stringify(msg.result));
+
+				cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression });
+			} else {
+				clientState.state = 'IDLE';
+				console.log('Streaming stopped');
+		
+				cvWorker.postMessage({ action: 'shutdown' });
+			}
 		}
 	});
 	
-	frameLoop(ws, detectionMessage, payload);
+	// Inizializza il thread OpenCV
+	cvWorker.postMessage( { action: 'initialize', stream: inputStream });
 	
-	// Inizializza il thread
-	worker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage });
+	// Inizializza il thread DNN
+	dnnWorker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage });
 
-	// Elabora il primo frame
-	sendFrameToWorker(worker);
-}
-
-function sendFrameToWorker(worker) {
-	const tempFile = '/tmp/frame.jpg';
-
-	if(currentFrame != null && !currentFrame.empty) {
-		workingFrame = currentFrame.copy();
-		cv.imwrite(tempFile, workingFrame);
-		worker.postMessage({ action: 'detect', file: tempFile });
-	} else {
-		worker.postMessage({ action: 'shutdown' });
-	}
-}
-
-function frameLoop(ws, detectionMessage, payload) {
-	const clientState = clientStates.get(ws);
-
-	if (clientState === undefined) {
-		console.log('Client disconnected');
-		cap.release();
-		return;
-	}
-
-	// Estrazione frame con OpenCV
-	currentFrame = cap.read();
-
-	if (clientState.state == 'STREAMING') {
-		setImmediate(() => {
-			frameLoop(ws, detectionMessage, payload);
-		});
-	} else {
-		clientState.state = 'IDLE';
-		currentFrame = null;
-		console.log('Streaming stopped');
-
-		cap.release();
-	}
+	// Richiede il primo frame
+	cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression });
 }
