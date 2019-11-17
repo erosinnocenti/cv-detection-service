@@ -1,5 +1,6 @@
 const { parentPort } = require('worker_threads')
 const { Darknet } = require('darknet');
+const cv = require('opencv4nodejs');
 
 darknet = new Darknet({
 	weights: './config/yolov3-tiny.weights',
@@ -7,8 +8,18 @@ darknet = new Darknet({
 	names: ['person']
 });
 
+// Variabili per l'esecuzione
+let cap = null;
+let stopped = true;
+let frame = null;
+let firstFrame = false;
+
+// Variabili input
 let detectionMessage = null;
 let clientState = null;
+let inputFile = null;
+let sendImages = null;
+let compression = null;
 
 parentPort.on('message', (msg) => {
 	let frame = null;
@@ -16,6 +27,9 @@ parentPort.on('message', (msg) => {
 	if(msg.action == 'initialize') {
 		detectionMessage = msg.detectionMessage;
 		clientState = msg.clientState;
+		inputFile = msg.inputFile;
+		sendImages = msg.sendImages;
+		compression = msg.compression;
 		
 		console.log('DNN worker initialized for client ' + clientState.uuid);
 		
@@ -23,6 +37,8 @@ parentPort.on('message', (msg) => {
 	} else if(msg.action == 'shutdown') {
 		console.log('Shutting down DNN worker for client ' + clientState.uuid);
 
+	if(frame == null || frame.empty) {
+		stopped = true;
 		return;
 	} else if(msg.action = 'detect') {
 		frame = msg.frame;
@@ -67,13 +83,13 @@ parentPort.on('message', (msg) => {
 		detections: darknet.detect(frame)
 	};
 
-	// Creazione e invio messaggio a client
-	const message = detectionMessage;
-	
-	const result = {
-		status: 'done',
-		result: message
+	if(firstFrame) {
+		sendLastDetection();
+		firstFrame = false;
 	}
-
-	parentPort.postMessage(result);
-});
+	
+	// Prossimo frame
+	if(!stopped) {
+		setImmediate(detectOnFrame);
+	}
+}

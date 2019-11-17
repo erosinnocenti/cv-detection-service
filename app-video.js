@@ -57,4 +57,4 @@ do {
 
   // console.log(darknet.detect(frame));
 } while(!frame.empty);
- 
+
