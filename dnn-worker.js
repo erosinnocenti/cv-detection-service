@@ -1,31 +1,80 @@
 const { parentPort } = require('worker_threads')
 const { Darknet } = require('darknet');
+const cv = require('opencv4nodejs');
 
 darknet = new Darknet({
-	weights: './config/yolov3.weights',
-	config: './config/yolov3.cfg',
+	weights: './config/yolov3-tiny.weights',
+	config: './config/yolov3-tiny.cfg',
 	names: ['person']
 });
 
+// Variabili per l'esecuzione
+let cap = null;
+let stopped = true;
+let frame = null;
+let firstFrame = false;
+
+// Variabili input
 let detectionMessage = null;
 let clientState = null;
+let inputFile = null;
+let sendImages = null;
+let compression = null;
 
 parentPort.on('message', (msg) => {
-	let frame = null;
-	
-	if(msg.action == 'initialize') {
+	if(msg.action == 'run') {
+		frame = null;
+		firstFrame = true;
+
 		detectionMessage = msg.detectionMessage;
 		clientState = msg.clientState;
+		inputFile = msg.inputFile;
+		sendImages = msg.sendImages;
+		compression = msg.compression;
 		
-		console.log('Worker initialized for client ' + clientState.uuid);
-		
+		console.log('Worker started for client ' + clientState.uuid);
+
+		cap = new cv.VideoCapture(inputFile);
+		stopped = false;
+
+		setImmediate(detectOnFrame);
+
 		return;
 	} else if(msg.action == 'shutdown') {
 		console.log('Shutting down worker for client ' + clientState.uuid);
+		cap.release();
 
 		return;
-	} else if(msg.action = 'detect') {
-		frame = msg.file;
+	} else if(msg.action = 'get-detection') {
+		sendLastDetection();
+	}
+});
+
+function sendLastDetection() {
+	// Creazione immagine
+	if (sendImages == true) {
+		// Compressione frame e codifica Base64
+		// workingFrame.resize(workingFrame.rows / 2, workingFrame.cols / 2);
+
+		const b64 = cv.imencode('.jpg', frame, [cv.IMWRITE_JPEG_QUALITY, compression]).toString('base64');
+		detectionMessage.payload.image = 'data:image/jpg;base64,' + b64;
+	}
+
+	// Aggiunta dimensione frame
+	detectionMessage.payload.size = {
+		h: frame.rows,
+		w: frame.cols
+	}
+
+	parentPort.postMessage(detectionMessage);
+}
+
+function detectOnFrame() {
+	frame = cap.read();
+
+	if(frame == null || frame.empty) {
+		stopped = true;
+		return;
 	}
 
 	// Aggiornamento tempo ultimo frame e calcolo FPS
@@ -64,13 +113,13 @@ parentPort.on('message', (msg) => {
 		detections: darknet.detect(frame)
 	};
 
-	// Creazione e invio messaggio a client
-	const message = detectionMessage;
-	
-	const result = {
-		status: 'done',
-		result: message
+	if(firstFrame) {
+		sendLastDetection();
+		firstFrame = false;
 	}
-
-	parentPort.postMessage(result);
-});
+	
+	// Prossimo frame
+	if(!stopped) {
+		setImmediate(detectOnFrame);
+	}
+}

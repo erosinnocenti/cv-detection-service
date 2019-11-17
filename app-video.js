@@ -42,6 +42,6 @@ do {
   lastFrameTime = Date.now();
 
   frame = cap.read();
-  // console.log(darknet.detect(frame));
+  console.log(darknet.detect(frame));
 } while(!frame.empty);
- 
+

@@ -1,38 +1,14 @@
 import { env } from './environment/environment';
 const WebSocket = require('ws');
-const BSON = require('bson');
 const uuidv1 = require('uuid/v1');
 const { Worker } = require('worker_threads');
 
 const clientStates = new Map();
 
-let inputFile = './data/venezia.mp4';
-// const inputFile = 'rtsp://admin:password@192.168.91.227:554/ch01.264?ptype=udp';
-// const inputFile = './data/person_001.jpg';
-
-let cap = null;
-let currentFrame = null;
-let workingFrame = null;
-
 const worker = new Worker('./dnn-worker.js');
 
 const wss = new WebSocket.Server({ 
-	port: env.wsPort,
-/* 	perMessageDeflate: {
-		zlibDeflateOptions: {
-		  chunkSize: 1024,
-		  memLevel: 7,
-		  level: 3
-		},
-		zlibInflateOptions: {
-		  chunkSize: 10 * 1024
-		},
-		clientNoContextTakeover: true,
-		serverNoContextTakeover: true,
-		serverMaxWindowBits: 10,
-		concurrencyLimit: 10,
-		threshold: 1024
-	  } */
+	port: env.wsPort
 });
 console.log('WebSocket server started');
 
@@ -65,17 +41,17 @@ wss.on('connection', (ws, req) => {
 			uuid: uuid
 		}
 	};
-	ws.send(BSON.serialize(uuidAssignMessage));
+	ws.send(JSON.stringify(uuidAssignMessage));
 
 	ws.on('message', message => {
 		console.log('Message received: ' + message);
 
-		const messageObj = BSON.deserialize(message);
+		const messageObj = JSON.parse(message);
 
 		switch (messageObj.type) {
 			case 'START_STREAMING':
 				console.log('Streaming started');
-				console.log('Config = ' + BSON.serialize(messageObj.payload));
+				console.log('Config = ' + JSON.stringify(messageObj.payload));
 				clientStates.get(ws).state = 'STREAMING';
 
 				startStreaming(ws, messageObj.payload);
@@ -96,89 +72,44 @@ wss.on('connection', (ws, req) => {
 });
 
 function startStreaming(ws, payload) {
-	inputFile = payload.input;
-
-	cap = new cv.VideoCapture(inputFile);
-	
 	const detectionMessage = {
 		type: 'DETECTION',
 		payload: {}
 	};
 
-	const clientState = clientStates.get(ws);
-	clientState.frameCount = 0;
-	clientState.frameTime = 0;
-	clientState.fps = 0;
-	clientState.lastFrameTime = null;
-
-	// Thread separato per YOLO
-	worker.removeAllListeners('message');
+	worker.removeAllListeners();
 	worker.on('message', (msg) => {
-		if(msg.status = 'done') {
-			// Invio immagine
-			if (payload.sendImages == true) {
-				// Frame ridimensionato e compresso
-				// workingFrame.resize(workingFrame.rows / 2, workingFrame.cols / 2);
+		const clientState = clientStates.get(ws);
 
-				const b64 = cv.imencode('.jpg', workingFrame, [cv.IMWRITE_JPEG_QUALITY, payload.compression]).toString('base64');
-				msg.result.payload.image = 'data:image/jpg;base64,' + b64;
-			}
-
-			// Aggiunta dimensione canvas
-			msg.result.payload.size = {
-				h: workingFrame.rows,
-				w: workingFrame.cols
-			}
-
-			ws.send(BSON.serialize(msg.result));
-			
-			// Elabora il prossimo frame
-			sendFrameToWorker(worker);
+		if (clientState === undefined) {
+			console.log('Client disconnected');
+			return;
 		}
+
+		if (clientState.state == 'STREAMING') {
+			setImmediate(() => {
+				worker.postMessage({ action: 'get-detection' });
+			});
+		} else if (clientState.state == 'STOP') {
+			worker.postMessage({ action: 'shutdown' });
+		} else {
+			clientState.state = 'IDLE';
+			currentFrame = null;
+			console.log('Streaming stopped');
+		}
+
+		ws.send(JSON.stringify(msg));
 	});
-	
-	frameLoop(ws, detectionMessage, payload);
-	
-	// Inizializza il thread
-	worker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage });
 
-	// Elabora il primo frame
-	sendFrameToWorker(worker);
-}
-
-function sendFrameToWorker(worker) {
-	const tempFile = '/tmp/frame.jpg';
-
-	if(currentFrame != null && !currentFrame.empty) {
-		workingFrame = currentFrame.copy();
-		cv.imwrite(tempFile, workingFrame);
-		worker.postMessage({ action: 'detect', file: tempFile });
-	} else {
-		worker.postMessage({ action: 'shutdown' });
-	}
-}
-
-function frameLoop(ws, detectionMessage, payload) {
 	const clientState = clientStates.get(ws);
-
-	if (clientState === undefined) {
-		console.log('Client disconnected');
-		cap.release();
-		return;
-	}
-
-	// Estrazione frame con OpenCV
-	currentFrame = cap.read();
-
-	if (clientState.state == 'STREAMING') {
-		setImmediate(() => {
-			frameLoop(ws, detectionMessage, payload);
-		});
-	} else {
-		clientState.state = 'IDLE';
-		currentFrame = null;
-		console.log('Streaming stopped');
-
-		cap.release();
-	}
+	
+	// Esegue il thread
+	worker.postMessage({ 
+		action: 'run', 
+		clientState: clientState, 
+		detectionMessage: detectionMessage, 
+		inputFile: payload.input,
+		sendImages: payload.sendImages,
+		compression: payload.compression
+	});
 }
