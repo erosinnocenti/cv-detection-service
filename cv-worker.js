@@ -10,8 +10,7 @@ parentPort.on('message', (msg) => {
 		console.log('OpenCV Worker initialized for stream ' + stream);
         
         cap = new cv.VideoCapture(stream);
-        cap.set(cv.CAP_PROP_FPS, 100);
-
+        
         readFrame();
 	} else if(msg.action == 'get-frame') {
         const buffer = currentFrame.getData();
