@@ -13,29 +13,40 @@ parentPort.on('message', (msg) => {
         
         readFrame();
 	} else if(msg.action == 'get-frame') {
-        const buffer = currentFrame.getData();
-		const image = {
-			w: currentFrame.cols,
-			h: currentFrame.rows,
-			c: currentFrame.channels,
-			b: buffer.buffer
-        }
-
-        const result = {
-            status: 'done',
-            frame: image
-        }
-
-        if(msg.withImage == true) {
-            if(msg.maxSize !== undefined) {
-                currentFrame = currentFrame.resizeToMax(msg.maxSize);
+        if(!currentFrame.empty) {
+            const buffer = currentFrame.getData();
+            const image = {
+                w: currentFrame.cols,
+                h: currentFrame.rows,
+                c: currentFrame.channels,
+                b: buffer.buffer
             }
 
-            const encoded = cv.imencode('.jpg', currentFrame, [cv.IMWRITE_JPEG_QUALITY, msg.compression]).toString('base64');
-            result.dataUrl = 'data:image/jpg;base64,' + encoded;
-        }
+            const result = {
+                status: 'done',
+                frame: image
+            }
 
-        parentPort.postMessage(result);
+            if(msg.withImage == true) {
+                if(msg.maxSize !== undefined) {
+                    currentFrame = currentFrame.resizeToMax(msg.maxSize);
+                }
+
+                const encoded = cv.imencode('.jpg', currentFrame, [cv.IMWRITE_JPEG_QUALITY, msg.compression]).toString('base64');
+                result.dataUrl = 'data:image/jpg;base64,' + encoded;
+            }
+
+            parentPort.postMessage(result);
+        } else {
+            const result = {
+                status: 'done',
+                frame: {
+                    empty: true
+                }
+            }
+
+            parentPort.postMessage(result);
+        }
     }
 });
 

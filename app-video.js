@@ -14,6 +14,7 @@ const cap = new cv.VideoCapture('./data/florida.mp4');
 let frame;
 let index = 0;
 
+let totalFrameCount = 0;
 let lastFrameTime = null;
 let frameCount = 0;
 let frameTime = 0;
@@ -46,26 +47,31 @@ do {
 
   workingFrame = frame.copy();
 
-  const buffer = workingFrame.getData();
-  const image =  {
-	w: workingFrame.cols,
-	h: workingFrame.rows,
-	c: workingFrame.channels,
-	b: Buffer.from(buffer.buffer)
-  }
-  
-  startTime = Date.now();
-
-  const dets = darknet.detect(frame);
-	const filteredPeople = [];
-
-	for(let d of dets) {
-		
-			console.log(d.prob);
-		
+  if(!frame.empty) {
+	const buffer = workingFrame.getData();
+	const image =  {
+		w: workingFrame.cols,
+		h: workingFrame.rows,
+		c: workingFrame.channels,
+		b: Buffer.from(buffer.buffer)
 	}
+	
+	startTime = Date.now();
+
+	totalFrameCount++;
+  }
+
+//   const dets = darknet.detect(frame);
+// 	const filteredPeople = [];
+
+// 	for(let d of dets) {
+		
+// 			console.log(d.prob);
+		
+// 	}
 
 
   // console.log(darknet.detect(frame));
 } while(!frame.empty);
 
+console.log('Total frame count ' + totalFrameCount);

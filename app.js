@@ -27,6 +27,7 @@ wss.on('connection', (ws, req) => {
 		lastFrameTime: null,
 		frameTime: 0,
 		frameCount: 0,
+		totalFrameCount: 0,
 		fps: 0
 	};
 	console.log(
@@ -86,6 +87,7 @@ function startStreaming(ws, payload) {
 	const clientState = clientStates.get(ws);
 	clientState.frameCount = 0;
 	clientState.frameTime = 0;
+	clientState.totalFrameCount = 0;
 	clientState.fps = 0;
 	clientState.lastFrameTime = null;
 
