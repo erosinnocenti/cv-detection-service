@@ -1,3 +1,3 @@
 export const env = {
-	wsPort: 3000,
+	wsPort: 3001,
 };
