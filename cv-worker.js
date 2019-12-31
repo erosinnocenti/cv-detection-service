@@ -2,6 +2,9 @@ const { parentPort } = require('worker_threads')
 const cv = require('opencv4nodejs');
 
 currentFrame = null;
+running = false;
+
+const fps = 30;
 
 parentPort.on('message', (msg) => {
     if(msg.action == 'initialize') {
@@ -11,7 +14,10 @@ parentPort.on('message', (msg) => {
         
         cap = new cv.VideoCapture(stream);
         
+        running = true;
         readFrame();
+
+        parentPort.postMessage({ status: 'initialized' });
 	} else if(msg.action == 'get-frame') {
         if(!currentFrame.empty) {
             const buffer = currentFrame.getData();
@@ -47,19 +53,31 @@ parentPort.on('message', (msg) => {
 
             parentPort.postMessage(result);
         }
+    } else if(msg.action == 'shutdown') {
+        console.log('Shutting down OpenCV Thread');
+        
+        running = false;
+
+        cap.release();
+        cap = null;
+        currentFrame = null;
     }
 });
 
 function readFrame() {
+    if(!running) {
+        return;
+    }
+    
     if(currentFrame == null) {
         currentFrame = cap.read();
     }
 
     cap.readAsync((err, frame) => {
         currentFrame = frame;
-
-        if(!currentFrame.empty) {
-            setImmediate(readFrame);
-        }
     });
+
+    if(currentFrame != null && !currentFrame.empty) {
+        setTimeout(readFrame, 1000 / fps);
+    }
 }

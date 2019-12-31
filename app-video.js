@@ -3,14 +3,18 @@ const cv = require('opencv4nodejs');
 const { Darknet } = require('darknet'); 
 
 // Init
+/*
 let darknet = new Darknet({
     weights: './config/yolov3-tiny.weights',
     config: './config/yolov3-tiny.cfg',
     names: [ 'person' ]
 });
+*/
 
 const cap = new cv.VideoCapture('./data/florida.mp4');
- 
+console.log(cap.get(cv.CAP_PROP_FPS));
+cap.set(cv.CAP_FFMPEG, 0);
+
 let frame;
 let index = 0;
 
@@ -19,8 +23,10 @@ let lastFrameTime = null;
 let frameCount = 0;
 let frameTime = 0;
 
-do {
-  if (lastFrameTime != null) {
+const period = 1000 / 30;
+
+function grabFrame() {
+	if (lastFrameTime != null) {
 		const delta = (Date.now() - lastFrameTime) / 1000;
 		frameCount = frameCount + 1;
 		frameTime = frameTime + delta;
@@ -40,11 +46,13 @@ do {
 		}
   }
   
+lastFrameTime = Date.now();
+	
+frame = cap.readAsync(() => {});
+
+setTimeout(grabFrame, period);
   
-  lastFrameTime = Date.now();
-
-  frame = cap.read();
-
+  /*
   workingFrame = frame.copy();
 
   if(!frame.empty) {
@@ -60,18 +68,19 @@ do {
 
 	totalFrameCount++;
   }
+*/
+/*
+   const dets = darknet.detect(frame);
+ 	const filteredPeople = [];
 
-//   const dets = darknet.detect(frame);
-// 	const filteredPeople = [];
+ 	for(let d of dets) {
 
-// 	for(let d of dets) {
-		
-// 			console.log(d.prob);
-		
-// 	}
+		console.log(d.prob);
 
+ 	}
+*/
 
   // console.log(darknet.detect(frame));
-} while(!frame.empty);
+}
 
-console.log('Total frame count ' + totalFrameCount);
+grabFrame();

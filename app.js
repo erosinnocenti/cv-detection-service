@@ -110,13 +110,16 @@ function startStreaming(ws, payload) {
 			} else {
 				dnnWorker.postMessage({ action: 'shutdown' });
 			}
+		} else if(msg.status == 'initialized') {
+			// Richiede il primo frame
+			cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression, maxSize: payload.maxSize });
 		}
 	});
 
 	// Thread separato per YOLO
 	dnnWorker.removeAllListeners('message');
 	dnnWorker.on('message', (msg) => {
-		if(msg.status = 'done') {
+		if(msg.status == 'done') {
 			if (clientState.state == 'STREAMING') {
 				msg.result.payload.image = lastResult.dataUrl;
 
@@ -131,16 +134,15 @@ function startStreaming(ws, payload) {
 				console.log('Streaming stopped');
 		
 				cvWorker.postMessage({ action: 'shutdown' });
+				dnnWorker.postMessage({ action: 'shutdown' });
 			}
+		} else if(msg.status == 'initialized') {
+			// Inizializza il thread OpenCV
+			cvWorker.postMessage({ action: 'initialize', stream: inputStream });
 		}
 	});
-	
-	// Inizializza il thread OpenCV
-	cvWorker.postMessage( { action: 'initialize', stream: inputStream });
 	
 	// Inizializza il thread DNN
 	dnnWorker.postMessage({ action: 'initialize', clientState: clientState, detectionMessage: detectionMessage, minProb: payload.minProb });
 
-	// Richiede il primo frame
-	cvWorker.postMessage({ action: 'get-frame', withImage: payload.sendImages, compression: payload.compression, maxSize: payload.maxSize });
 }

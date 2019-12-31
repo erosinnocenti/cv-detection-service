@@ -2,8 +2,8 @@ const { parentPort } = require('worker_threads')
 const { Darknet } = require('darknet');
 
 darknet = new Darknet({
-	weights: './config/yolov3-spp.weights',
-	config: './config/yolov3-spp.cfg',
+	weights: './config/yolov3.weights',
+	config: './config/yolov3.cfg',
 	names: ['person']
 });
 
@@ -21,6 +21,8 @@ parentPort.on('message', (msg) => {
 
 		console.log('DNN worker initialized for client ' + clientState.uuid);
 		
+		parentPort.postMessage({ status: 'initialized' });
+
 		return;
 	} else if(msg.action == 'shutdown') {
 		console.log('Shutting down DNN worker for client ' + clientState.uuid);
