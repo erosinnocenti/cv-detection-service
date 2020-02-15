@@ -9,7 +9,7 @@ let darknet = new Darknet({
 	names: ['person']
 });
 
-const cap = new cv.VideoCapture('./data/left.mp4');
+const cap = new cv.VideoCapture('./data/zebra_crossing.mp4');
 const green = new cv.Vec3(0, 255, 0);
 const blue = new cv.Vec3(255, 0, 0);
 const red = new cv.Vec3(0, 0, 255);
@@ -20,15 +20,15 @@ const magenta = new cv.Vec3(255, 0, 255);
 // const lineP2 = new cv.Point(703, 720);
 
 // Zebra Crossing
-// const lineP1 = new cv.Point(0, 387);
-// const lineP2 = new cv.Point(589, 260);
+const lineP1 = new cv.Point(0, 387);
+const lineP2 = new cv.Point(589, 260);
 
 // Multiple Directions
-const lineP1 = new cv.Point(315, 480);
-const lineP2 = new cv.Point(315, 0);
+// const lineP1 = new cv.Point(315, 480);
+// const lineP2 = new cv.Point(315, 0);
 const minDistance = 0;
 
-let grabEvery = 10;
+let grabEvery = 50;
 
 let frame;
 let frameCount = 0;
@@ -48,7 +48,7 @@ function grabFrame() {
 
 		console.log('Elaborazione frame ' + frameCount);
 		
-		results = darknet.detect(frame);
+		results = darknet.detect(frame, { thresh: 0.4 });
 
 		frame.drawLine(lineP1, lineP2, blue, 2);
 		

@@ -3,7 +3,7 @@ const { Darknet } = require('darknet');
 
 darknet = new Darknet({
 	weights: './config/yolov3.weights',
-	config: './config/yolov3.cfg',
+	config: './config/yolov3-512.cfg',
 	names: ['person']
 });
 
